@@ -833,7 +833,7 @@ public class MainActivity extends ComponentActivity {
                     case "keywordHint": return "Enter part name or drawing number";
                     case "search": return "Search";
                     case "resultTitle": return "Search results";
-                    case "scanHint": return "Scan or enter box code";
+                    case "scanHint": return "Scan or enter spare part drawing number";
                     case "scan": return "Scan";
                     case "back": return "Back";
                     case "barcodeOnly": return "Barcode only";
@@ -845,7 +845,7 @@ public class MainActivity extends ComponentActivity {
                     case "note": return "Note";
                     case "resultCount": return "%d results";
                     case "enterKeyword": return "Please enter a keyword";
-                    case "enterScan": return "Please scan or enter a code";
+                    case "enterScan": return "Please scan or enter a spare part drawing number";
                     case "notFound": return "No vehicle found";
                     case "exactNotFound": return "No exact drawing number match";
                     case "fuzzySearch": return "Fuzzy search";
@@ -858,7 +858,7 @@ public class MainActivity extends ComponentActivity {
                     case "shortName": return "Short name";
                     case "assembly": return "Assembly";
                     case "scanKey": return "Scan key";
-                    case "partCode": return "Part code";
+                    case "partCode": return "Lookup drawing No";
                     case "drawingNo": return "Drawing No";
                     case "partName": return "Part name";
                     case "group": return "Group";
@@ -877,7 +877,7 @@ public class MainActivity extends ComponentActivity {
                     case "keywordHint": return "Nom de piece ou numero de dessin";
                     case "search": return "Rechercher";
                     case "resultTitle": return "Resultats";
-                    case "scanHint": return "Scanner ou saisir le code";
+                    case "scanHint": return "Scanner ou saisir le numero de dessin de la piece";
                     case "scan": return "Scanner";
                     case "back": return "Retour";
                     case "barcodeOnly": return "Code-barres seulement";
@@ -889,7 +889,7 @@ public class MainActivity extends ComponentActivity {
                     case "note": return "Note";
                     case "resultCount": return "%d resultats";
                     case "enterKeyword": return "Veuillez saisir un mot-cle";
-                    case "enterScan": return "Veuillez scanner ou saisir un code";
+                    case "enterScan": return "Veuillez scanner ou saisir le numero de dessin de la piece";
                     case "notFound": return "Vehicule introuvable";
                     case "exactNotFound": return "Aucune correspondance exacte du numero de dessin";
                     case "fuzzySearch": return "Recherche approximative";
@@ -902,7 +902,7 @@ public class MainActivity extends ComponentActivity {
                     case "shortName": return "Nom court";
                     case "assembly": return "Assemblage";
                     case "scanKey": return "Cle de scan";
-                    case "partCode": return "Code piece";
+                    case "partCode": return "Numero de dessin recherche";
                     case "drawingNo": return "Numero de dessin";
                     case "partName": return "Nom de piece";
                     case "group": return "Groupe";
@@ -921,7 +921,7 @@ public class MainActivity extends ComponentActivity {
                     case "keywordHint": return "\u8f93\u5165\u914d\u4ef6\u540d\u79f0\u6216\u56fe\u53f7";
                     case "search": return "\u641c\u7d22";
                     case "resultTitle": return "\u641c\u7d22\u7ed3\u679c";
-                    case "scanHint": return "\u626b\u63cf\u6216\u8f93\u5165\u7bb1\u7801";
+                    case "scanHint": return "\u626b\u63cf\u6216\u8f93\u5165\u5907\u4ef6\u56fe\u53f7";
                     case "scan": return "\u626b\u7801";
                     case "back": return "\u8fd4\u56de";
                     case "barcodeOnly": return "\u4ec5\u652f\u6301\u6761\u5f62\u7801";
@@ -933,7 +933,7 @@ public class MainActivity extends ComponentActivity {
                     case "note": return "\u8bf4\u660e";
                     case "resultCount": return "\u5171 %d \u6761";
                     case "enterKeyword": return "\u8bf7\u8f93\u5165\u5173\u952e\u8bcd";
-                    case "enterScan": return "\u8bf7\u626b\u63cf\u6216\u8f93\u5165\u7f16\u7801";
+                    case "enterScan": return "\u8bf7\u626b\u63cf\u6216\u8f93\u5165\u5907\u4ef6\u56fe\u53f7";
                     case "notFound": return "\u672a\u627e\u5230\u8f66\u578b";
                     case "exactNotFound": return "\u672a\u627e\u5230\u7cbe\u786e\u56fe\u53f7\u5339\u914d";
                     case "fuzzySearch": return "\u6a21\u7cca\u67e5\u627e";
@@ -946,7 +946,7 @@ public class MainActivity extends ComponentActivity {
                     case "shortName": return "\u7b80\u79f0";
                     case "assembly": return "\u6574\u7f16";
                     case "scanKey": return "\u626b\u7801\u67e5\u627e\u7801";
-                    case "partCode": return "\u622a\u53d6\u540e\u56fe\u53f7";
+                    case "partCode": return "\u67e5\u8be2\u56fe\u53f7";
                     case "drawingNo": return "\u56fe\u53f7";
                     case "partName": return "\u914d\u4ef6\u540d\u79f0";
                     case "group": return "\u5206\u7ec4";

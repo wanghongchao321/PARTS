@@ -135,11 +135,11 @@ final class PartsDatabase {
 
     List<VehicleInfo> findVehiclesByScannedPartNo(String language, String scannedCode, boolean fuzzy, boolean fromScanner) {
         String raw = safe(scannedCode).trim();
-        String trimmedBoxCode = normalizeScan(raw);
         if (raw.isEmpty()) {
             return new ArrayList<>();
         }
         List<VehicleInfo> infos = fuzzy ? fuzzyFindByPartNo(language, raw, 50) : exactFindByPartNo(language, raw, 100);
+        String trimmedBoxCode = fromScanner ? normalizeScan(raw) : raw;
         if (!infos.isEmpty() || trimmedBoxCode.equals(raw)) {
             return infos;
         }
@@ -234,10 +234,20 @@ final class PartsDatabase {
 
     static String normalizeScan(String raw) {
         String code = safe(raw).trim();
-        if (code.length() > 6) {
+        if (isBoxCodeWithSerialSuffix(code)) {
             return code.substring(1, code.length() - 5);
         }
         return code;
+    }
+
+    private static boolean isBoxCodeWithSerialSuffix(String code) {
+        if (code.length() <= 6) return false;
+        int suffixStart = code.length() - 5;
+        if (!Character.isLetter(code.charAt(suffixStart))) return false;
+        for (int i = suffixStart + 1; i < code.length(); i++) {
+            if (!Character.isDigit(code.charAt(i))) return false;
+        }
+        return true;
     }
 
     private String joinedPartSql(String view) {
