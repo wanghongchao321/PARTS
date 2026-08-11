@@ -2,6 +2,7 @@ package com.partssystem.app;
 
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -34,6 +35,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ScanActivity extends ComponentActivity {
+    private static final float SCAN_LEFT_RATIO = 0.08f;
+    private static final float SCAN_RIGHT_RATIO = 0.92f;
+    private static final float SCAN_TOP_RATIO = 0.34f;
+    private static final float SCAN_BOTTOM_RATIO = 0.66f;
     private ExecutorService executor;
     private BarcodeScanner scanner;
     private boolean finished;
@@ -121,15 +126,19 @@ public class ScanActivity extends ComponentActivity {
             imageProxy.close();
             return;
         }
-        InputImage image = InputImage.fromMediaImage(imageProxy.getImage(), imageProxy.getImageInfo().getRotationDegrees());
+        int rotation = imageProxy.getImageInfo().getRotationDegrees();
+        int imageWidth = (rotation == 90 || rotation == 270) ? imageProxy.getHeight() : imageProxy.getWidth();
+        int imageHeight = (rotation == 90 || rotation == 270) ? imageProxy.getWidth() : imageProxy.getHeight();
+        InputImage image = InputImage.fromMediaImage(imageProxy.getImage(), rotation);
         scanner.process(image)
-                .addOnSuccessListener(this::handleBarcodes)
+                .addOnSuccessListener(barcodes -> handleBarcodes(barcodes, imageWidth, imageHeight))
                 .addOnCompleteListener(task -> imageProxy.close());
     }
 
-    private void handleBarcodes(List<Barcode> barcodes) {
+    private void handleBarcodes(List<Barcode> barcodes, int imageWidth, int imageHeight) {
         if (finished || barcodes.isEmpty()) return;
-        Barcode barcode = barcodes.get(0);
+        Barcode barcode = firstBarcodeInsideScanArea(barcodes, imageWidth, imageHeight);
+        if (barcode == null) return;
         String value = barcode.getRawValue();
         if (value == null || value.trim().isEmpty()) return;
         finished = true;
@@ -137,6 +146,21 @@ public class ScanActivity extends ComponentActivity {
         data.putExtra("code", value.trim());
         setResult(RESULT_OK, data);
         finish();
+    }
+
+    private Barcode firstBarcodeInsideScanArea(List<Barcode> barcodes, int imageWidth, int imageHeight) {
+        for (Barcode barcode : barcodes) {
+            Rect box = barcode.getBoundingBox();
+            if (box == null) continue;
+            int centerX = box.centerX();
+            int centerY = box.centerY();
+            boolean inside = centerX >= imageWidth * SCAN_LEFT_RATIO
+                    && centerX <= imageWidth * SCAN_RIGHT_RATIO
+                    && centerY >= imageHeight * SCAN_TOP_RATIO
+                    && centerY <= imageHeight * SCAN_BOTTOM_RATIO;
+            if (inside) return barcode;
+        }
+        return null;
     }
 
     private int dp(int value) {

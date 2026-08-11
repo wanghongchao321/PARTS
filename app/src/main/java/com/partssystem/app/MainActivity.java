@@ -6,6 +6,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -59,6 +60,10 @@ public class MainActivity extends ComponentActivity {
     private static final int MUTED = 0xFF64748B;
     private static final int BLUE = 0xFF1456C8;
     private static final int SOFT = 0xFFEDF2F7;
+    private static final float SCAN_LEFT_RATIO = 0.08f;
+    private static final float SCAN_RIGHT_RATIO = 0.92f;
+    private static final float SCAN_TOP_RATIO = 0.34f;
+    private static final float SCAN_BOTTOM_RATIO = 0.66f;
 
     private PartsDatabase database;
     private final List<VehicleModel> models = new ArrayList<>();
@@ -415,15 +420,19 @@ public class MainActivity extends ComponentActivity {
             imageProxy.close();
             return;
         }
-        InputImage image = InputImage.fromMediaImage(imageProxy.getImage(), imageProxy.getImageInfo().getRotationDegrees());
+        int rotation = imageProxy.getImageInfo().getRotationDegrees();
+        int imageWidth = (rotation == 90 || rotation == 270) ? imageProxy.getHeight() : imageProxy.getWidth();
+        int imageHeight = (rotation == 90 || rotation == 270) ? imageProxy.getWidth() : imageProxy.getHeight();
+        InputImage image = InputImage.fromMediaImage(imageProxy.getImage(), rotation);
         barcodeScanner.process(image)
-                .addOnSuccessListener(this::handleInlineBarcodes)
+                .addOnSuccessListener(barcodes -> handleInlineBarcodes(barcodes, imageWidth, imageHeight))
                 .addOnCompleteListener(task -> imageProxy.close());
     }
 
-    private void handleInlineBarcodes(List<Barcode> barcodes) {
+    private void handleInlineBarcodes(List<Barcode> barcodes, int imageWidth, int imageHeight) {
         if (!inlineScanning || barcodes.isEmpty()) return;
-        Barcode barcode = barcodes.get(0);
+        Barcode barcode = firstBarcodeInsideScanArea(barcodes, imageWidth, imageHeight);
+        if (barcode == null) return;
         String value = barcode.getRawValue();
         if (value == null || value.trim().isEmpty()) return;
         stopInlineScan();
@@ -437,6 +446,21 @@ public class MainActivity extends ComponentActivity {
         }
         lastScanFromCamera = true;
         queryScan(code, false, true);
+    }
+
+    private Barcode firstBarcodeInsideScanArea(List<Barcode> barcodes, int imageWidth, int imageHeight) {
+        for (Barcode barcode : barcodes) {
+            Rect box = barcode.getBoundingBox();
+            if (box == null) continue;
+            int centerX = box.centerX();
+            int centerY = box.centerY();
+            boolean inside = centerX >= imageWidth * SCAN_LEFT_RATIO
+                    && centerX <= imageWidth * SCAN_RIGHT_RATIO
+                    && centerY >= imageHeight * SCAN_TOP_RATIO
+                    && centerY <= imageHeight * SCAN_BOTTOM_RATIO;
+            if (inside) return barcode;
+        }
+        return null;
     }
 
     @Override
@@ -645,6 +669,12 @@ public class MainActivity extends ComponentActivity {
         FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(dp(78), dp(38), Gravity.TOP | Gravity.LEFT);
         backLp.setMargins(dp(10), dp(10), 0, 0);
         overlay.addView(back, backLp);
+
+        View frame = new View(this);
+        frame.setBackground(roundStrokeBg(Color.TRANSPARENT, 8, 0xFF2D8CFF, 2));
+        FrameLayout.LayoutParams frameLp = new FrameLayout.LayoutParams(-1, dp(86), Gravity.CENTER);
+        frameLp.setMargins(dp(22), 0, dp(22), 0);
+        overlay.addView(frame, frameLp);
 
         View line = new View(this);
         line.setBackgroundColor(0xFF2D8CFF);
