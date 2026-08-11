@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.barcode.BarcodeScanner;
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
 import com.google.mlkit.vision.barcode.BarcodeScanning;
 import com.google.mlkit.vision.barcode.common.Barcode;
 import com.google.mlkit.vision.common.InputImage;
@@ -41,7 +42,20 @@ public class ScanActivity extends ComponentActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         executor = Executors.newSingleThreadExecutor();
-        scanner = BarcodeScanning.getClient();
+        BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(
+                        Barcode.FORMAT_CODE_128,
+                        Barcode.FORMAT_CODE_39,
+                        Barcode.FORMAT_CODE_93,
+                        Barcode.FORMAT_CODABAR,
+                        Barcode.FORMAT_EAN_13,
+                        Barcode.FORMAT_EAN_8,
+                        Barcode.FORMAT_ITF,
+                        Barcode.FORMAT_UPC_A,
+                        Barcode.FORMAT_UPC_E
+                )
+                .build();
+        scanner = BarcodeScanning.getClient(options);
 
         FrameLayout root = new FrameLayout(this);
         PreviewView previewView = new PreviewView(this);
@@ -60,7 +74,7 @@ public class ScanActivity extends ComponentActivity {
         root.addView(back, backLp);
 
         TextView hint = new TextView(this);
-        hint.setText("Align barcode or QR code in the frame");
+        hint.setText("Align barcode in the frame");
         hint.setTextColor(0xFFFFFFFF);
         hint.setTextSize(17);
         hint.setGravity(Gravity.CENTER);
@@ -115,7 +129,8 @@ public class ScanActivity extends ComponentActivity {
 
     private void handleBarcodes(List<Barcode> barcodes) {
         if (finished || barcodes.isEmpty()) return;
-        String value = barcodes.get(0).getRawValue();
+        Barcode barcode = barcodes.get(0);
+        String value = barcode.getRawValue();
         if (value == null || value.trim().isEmpty()) return;
         finished = true;
         Intent data = new Intent();

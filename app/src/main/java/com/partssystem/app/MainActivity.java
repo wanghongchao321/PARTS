@@ -1,16 +1,15 @@
 package com.partssystem.app;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.util.Size;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -20,16 +19,37 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.ComponentActivity;
+import androidx.annotation.NonNull;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ExperimentalGetImage;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.ImageProxy;
+import androidx.camera.core.Preview;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
+import androidx.core.content.ContextCompat;
+
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.mlkit.vision.barcode.BarcodeScanner;
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
+import com.google.mlkit.vision.barcode.BarcodeScanning;
+import com.google.mlkit.vision.barcode.common.Barcode;
+import com.google.mlkit.vision.common.InputImage;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-public class MainActivity extends Activity {
+public class MainActivity extends ComponentActivity {
     private static final int REQ_SCAN = 101;
     private static final int REQ_CAMERA = 102;
     private static final int BG = 0xFFF8FAFC;
@@ -39,7 +59,6 @@ public class MainActivity extends Activity {
     private static final int MUTED = 0xFF64748B;
     private static final int BLUE = 0xFF1456C8;
     private static final int SOFT = 0xFFEDF2F7;
-    private static final int GREEN = 0xFF0F9F6E;
 
     private PartsDatabase database;
     private final List<VehicleModel> models = new ArrayList<>();
@@ -54,15 +73,34 @@ public class MainActivity extends Activity {
     private EditText scanInput;
     private TextView pageTitle;
     private TextView vehicleDetailText;
-    private View scannerPanel;
+    private FrameLayout scannerPanel;
     private View scanFieldLabel;
     private View scanSearchRow;
     private boolean lastScanFromCamera = false;
+    private boolean inlineScanning = false;
+    private ExecutorService cameraExecutor;
+    private BarcodeScanner barcodeScanner;
+    private ProcessCameraProvider cameraProvider;
     private int currentPage = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        cameraExecutor = Executors.newSingleThreadExecutor();
+        BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(
+                        Barcode.FORMAT_CODE_128,
+                        Barcode.FORMAT_CODE_39,
+                        Barcode.FORMAT_CODE_93,
+                        Barcode.FORMAT_CODABAR,
+                        Barcode.FORMAT_EAN_13,
+                        Barcode.FORMAT_EAN_8,
+                        Barcode.FORMAT_ITF,
+                        Barcode.FORMAT_UPC_A,
+                        Barcode.FORMAT_UPC_E
+                )
+                .build();
+        barcodeScanner = BarcodeScanning.getClient(options);
         database = new PartsDatabase(this);
         database.open();
         models.addAll(database.vehicleModels());
@@ -71,6 +109,9 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        stopInlineScan();
+        if (barcodeScanner != null) barcodeScanner.close();
+        if (cameraExecutor != null) cameraExecutor.shutdown();
         database.close();
         super.onDestroy();
     }
@@ -82,12 +123,15 @@ public class MainActivity extends Activity {
 
         LinearLayout top = horizontal();
         top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(dp(18), dp(12), dp(18), dp(14));
+        top.setPadding(dp(18), statusBarHeight() + dp(10), dp(18), dp(10));
         top.setBackgroundColor(CARD);
         LinearLayout titleBlock = vertical();
+        TextView logo = label("FOTON", 15, true);
+        logo.setTextColor(BLUE);
         pageTitle = label(text("appTitle"), 22, true);
         TextView subtitle = label("Parts Query", 13, false);
         subtitle.setTextColor(MUTED);
+        titleBlock.addView(logo);
         titleBlock.addView(pageTitle);
         titleBlock.addView(subtitle);
         top.addView(titleBlock, new LinearLayout.LayoutParams(0, -2, 1));
@@ -132,6 +176,7 @@ public class MainActivity extends Activity {
 
     private void renderPage() {
         if (root == null || root.getChildCount() < 2) return;
+        stopInlineScan();
         while (root.getChildCount() > 2) {
             root.removeViewAt(2);
         }
@@ -272,7 +317,7 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
             return;
         }
-        startActivityForResult(new Intent(this, ScanActivity.class), REQ_SCAN);
+        startInlineScan();
     }
 
     private void queryScan(String raw) {
@@ -323,15 +368,75 @@ public class MainActivity extends Activity {
         if (scanSearchRow != null) scanSearchRow.setVisibility(compact ? View.GONE : View.VISIBLE);
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_SCAN && resultCode == RESULT_OK && data != null) {
-            String code = data.getStringExtra("code");
-            scanInput.setText(code);
-            lastScanFromCamera = true;
-            queryScan(code, false, true);
+    private void startInlineScan() {
+        if (scannerPanel == null || inlineScanning) return;
+        inlineScanning = true;
+        scannerPanel.removeAllViews();
+
+        PreviewView previewView = new PreviewView(this);
+        scannerPanel.addView(previewView, new FrameLayout.LayoutParams(-1, -1));
+        scannerPanel.addView(scanOverlay(), new FrameLayout.LayoutParams(-1, -1));
+
+        ListenableFuture<ProcessCameraProvider> future = ProcessCameraProvider.getInstance(this);
+        future.addListener(() -> {
+            try {
+                cameraProvider = future.get();
+                Preview preview = new Preview.Builder().build();
+                preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+                ImageAnalysis analysis = new ImageAnalysis.Builder()
+                        .setTargetResolution(new Size(1280, 720))
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build();
+                analysis.setAnalyzer(cameraExecutor, this::analyzeBarcode);
+
+                cameraProvider.unbindAll();
+                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis);
+            } catch (Exception e) {
+                inlineScanning = false;
+                scannerPanel.removeAllViews();
+                scannerPanel.addView(scannerPlaceholder(), new FrameLayout.LayoutParams(-1, -1));
+                Toast.makeText(this, text("cameraError"), Toast.LENGTH_SHORT).show();
+            }
+        }, ContextCompat.getMainExecutor(this));
+    }
+
+    private void stopInlineScan() {
+        inlineScanning = false;
+        if (cameraProvider != null) {
+            cameraProvider.unbindAll();
+            cameraProvider = null;
         }
+    }
+
+    @ExperimentalGetImage
+    private void analyzeBarcode(@NonNull ImageProxy imageProxy) {
+        if (!inlineScanning || imageProxy.getImage() == null) {
+            imageProxy.close();
+            return;
+        }
+        InputImage image = InputImage.fromMediaImage(imageProxy.getImage(), imageProxy.getImageInfo().getRotationDegrees());
+        barcodeScanner.process(image)
+                .addOnSuccessListener(this::handleInlineBarcodes)
+                .addOnCompleteListener(task -> imageProxy.close());
+    }
+
+    private void handleInlineBarcodes(List<Barcode> barcodes) {
+        if (!inlineScanning || barcodes.isEmpty()) return;
+        Barcode barcode = barcodes.get(0);
+        String value = barcode.getRawValue();
+        if (value == null || value.trim().isEmpty()) return;
+        stopInlineScan();
+        if (scannerPanel != null) {
+            scannerPanel.removeAllViews();
+            scannerPanel.addView(scannerPlaceholder(), new FrameLayout.LayoutParams(-1, -1));
+        }
+        String code = value.trim();
+        if (scanInput != null) {
+            scanInput.setText(code);
+        }
+        lastScanFromCamera = true;
+        queryScan(code, false, true);
     }
 
     @Override
@@ -486,15 +591,20 @@ public class MainActivity extends Activity {
         return btn;
     }
 
-    private View scannerPreview() {
-        LinearLayout scanner = vertical();
-        scanner.setGravity(Gravity.CENTER);
-        scanner.setPadding(dp(28), dp(32), dp(28), dp(32));
+    private FrameLayout scannerPreview() {
+        FrameLayout scanner = new FrameLayout(this);
         scanner.setBackground(roundBg(0xFFA9825C, 10, 0));
         LinearLayout.LayoutParams scannerLp = new LinearLayout.LayoutParams(-1, dp(270));
         scannerLp.setMargins(0, 0, 0, dp(14));
         scanner.setLayoutParams(scannerLp);
+        scanner.addView(scannerPlaceholder(), new FrameLayout.LayoutParams(-1, -1));
+        return scanner;
+    }
 
+    private View scannerPlaceholder() {
+        LinearLayout wrapper = vertical();
+        wrapper.setGravity(Gravity.CENTER);
+        wrapper.setPadding(dp(28), dp(32), dp(28), dp(32));
         LinearLayout frame = vertical();
         frame.setGravity(Gravity.CENTER);
         frame.setPadding(dp(18), dp(18), dp(18), dp(18));
@@ -506,7 +616,7 @@ public class MainActivity extends Activity {
         box.setBackground(roundBg(CARD, 5, 0));
         TextView code = label("VBV3JBBXTY0", 20, true);
         code.setGravity(Gravity.CENTER);
-        TextView qr = label("QR / BARCODE", 14, false);
+        TextView qr = label("BARCODE", 14, false);
         qr.setGravity(Gravity.CENTER);
         TextView made = label("PARTS MADE IN CHINA", 13, false);
         made.setTextColor(MUTED);
@@ -515,8 +625,39 @@ public class MainActivity extends Activity {
         box.addView(qr);
         box.addView(made);
         frame.addView(box, new LinearLayout.LayoutParams(-1, -2));
-        scanner.addView(frame, new LinearLayout.LayoutParams(-1, -1));
-        return scanner;
+        wrapper.addView(frame, new LinearLayout.LayoutParams(-1, -1));
+        return wrapper;
+    }
+
+    private View scanOverlay() {
+        FrameLayout overlay = new FrameLayout(this);
+        Button back = button(text("back"));
+        back.setTextColor(Color.WHITE);
+        back.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        back.setBackground(roundBg(0x99111827, 18, 0));
+        back.setOnClickListener(v -> {
+            stopInlineScan();
+            if (scannerPanel != null) {
+                scannerPanel.removeAllViews();
+                scannerPanel.addView(scannerPlaceholder(), new FrameLayout.LayoutParams(-1, -1));
+            }
+        });
+        FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(dp(78), dp(38), Gravity.TOP | Gravity.LEFT);
+        backLp.setMargins(dp(10), dp(10), 0, 0);
+        overlay.addView(back, backLp);
+
+        View line = new View(this);
+        line.setBackgroundColor(0xFF2D8CFF);
+        FrameLayout.LayoutParams lineLp = new FrameLayout.LayoutParams(-1, dp(3), Gravity.CENTER);
+        lineLp.setMargins(dp(22), 0, dp(22), 0);
+        overlay.addView(line, lineLp);
+        TextView hint = label(text("barcodeOnly"), 13, true);
+        hint.setTextColor(Color.WHITE);
+        hint.setGravity(Gravity.CENTER);
+        hint.setBackgroundColor(0x66000000);
+        FrameLayout.LayoutParams hintLp = new FrameLayout.LayoutParams(-1, dp(42), Gravity.BOTTOM);
+        overlay.addView(hint, hintLp);
+        return overlay;
     }
 
     private void styleTab(Button button, boolean active) {
@@ -575,6 +716,9 @@ public class MainActivity extends Activity {
                     case "resultTitle": return "Search results";
                     case "scanHint": return "Scan or enter box code";
                     case "scan": return "Scan";
+                    case "back": return "Back";
+                    case "barcodeOnly": return "Barcode only";
+                    case "cameraError": return "Camera failed to start";
                     case "query": return "Query";
                     case "copy": return "Copy";
                     case "copied": return "Copied";
@@ -612,6 +756,9 @@ public class MainActivity extends Activity {
                     case "resultTitle": return "Resultats";
                     case "scanHint": return "Scanner ou saisir le code";
                     case "scan": return "Scanner";
+                    case "back": return "Retour";
+                    case "barcodeOnly": return "Code-barres seulement";
+                    case "cameraError": return "Impossible de demarrer la camera";
                     case "query": return "Rechercher";
                     case "copy": return "Copier";
                     case "copied": return "Copie";
@@ -649,6 +796,9 @@ public class MainActivity extends Activity {
                     case "resultTitle": return "\u641c\u7d22\u7ed3\u679c";
                     case "scanHint": return "\u626b\u63cf\u6216\u8f93\u5165\u7bb1\u7801";
                     case "scan": return "\u626b\u7801";
+                    case "back": return "\u8fd4\u56de";
+                    case "barcodeOnly": return "\u4ec5\u652f\u6301\u6761\u5f62\u7801";
+                    case "cameraError": return "\u76f8\u673a\u542f\u52a8\u5931\u8d25";
                     case "query": return "\u67e5\u8be2";
                     case "copy": return "\u590d\u5236";
                     case "copied": return "\u5df2\u590d\u5236";
@@ -680,5 +830,10 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private int statusBarHeight() {
+        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : 0;
     }
 }
