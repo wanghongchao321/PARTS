@@ -71,6 +71,8 @@ public class MainActivity extends ComponentActivity {
     private LinearLayout root;
     private Spinner languageSpinner;
     private Spinner vehicleSpinner;
+    private Spinner group1Spinner;
+    private Spinner group2Spinner;
     private Button partsTabButton;
     private Button scanTabButton;
     private LinearLayout resultList;
@@ -78,6 +80,9 @@ public class MainActivity extends ComponentActivity {
     private EditText scanInput;
     private TextView pageTitle;
     private TextView vehicleDetailText;
+    private final List<String> group1Values = new ArrayList<>();
+    private final List<String> group2Values = new ArrayList<>();
+    private boolean updatingGroupFilters = false;
     private FrameLayout scannerPanel;
     private View scanFieldLabel;
     private View scanSearchRow;
@@ -198,8 +203,11 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void renderPartsPage() {
+        ScrollView pageScroll = new ScrollView(this);
         LinearLayout content = content();
-        content.addView(fieldLabel(text("vehicleLabel")));
+
+        LinearLayout filterCard = card();
+        filterCard.addView(fieldLabel(text("vehicleLabel")));
         vehicleSpinner = new Spinner(this);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, modelLabels());
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -208,18 +216,48 @@ public class MainActivity extends ComponentActivity {
         vehicleSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updateSelectedVehicleDetail();
+                refreshGroupFilters();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
-        content.addView(vehicleSpinner, new LinearLayout.LayoutParams(-1, dp(46)));
+        filterCard.addView(vehicleSpinner, new LinearLayout.LayoutParams(-1, dp(46)));
 
         vehicleDetailText = label("", 14, false);
         vehicleDetailText.setBackground(cardBg());
         vehicleDetailText.setPadding(dp(12), dp(10), dp(12), dp(10));
         LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(-1, -2);
-        detailLp.setMargins(0, dp(9), 0, dp(12));
-        content.addView(vehicleDetailText, detailLp);
+        detailLp.setMargins(0, dp(8), 0, dp(8));
+        filterCard.addView(vehicleDetailText, detailLp);
+
+        LinearLayout groupRow = horizontal();
+        groupRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout group1Box = vertical();
+        group1Box.addView(fieldLabel(text("group1Label")));
+        group1Spinner = new Spinner(this);
+        group1Spinner.setBackground(controlBg());
+        group1Spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (!updatingGroupFilters) refreshGroup2Filter();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+        group1Box.addView(group1Spinner, new LinearLayout.LayoutParams(-1, dp(46)));
+
+        LinearLayout group2Box = vertical();
+        group2Box.addView(fieldLabel(text("group2Label")));
+        group2Spinner = new Spinner(this);
+        group2Spinner.setBackground(controlBg());
+        group2Box.addView(group2Spinner, new LinearLayout.LayoutParams(-1, dp(46)));
+
+        groupRow.addView(group1Box, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout.LayoutParams group2Lp = new LinearLayout.LayoutParams(0, -2, 1);
+        group2Lp.setMargins(dp(8), 0, 0, 0);
+        groupRow.addView(group2Box, group2Lp);
+        filterCard.addView(groupRow);
+
+        content.addView(filterCard);
         updateSelectedVehicleDetail();
+        refreshGroupFilters();
 
         LinearLayout searchRow = horizontal();
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -243,10 +281,9 @@ public class MainActivity extends ComponentActivity {
         content.addView(resultHead);
 
         resultList = vertical();
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(resultList);
-        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
+        content.addView(resultList, new LinearLayout.LayoutParams(-1, -2));
+        pageScroll.addView(content);
+        root.addView(pageScroll, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void renderScanPage() {
@@ -298,6 +335,52 @@ public class MainActivity extends ComponentActivity {
         vehicleDetailText.setText(vehicleDetail(models.get(Math.max(0, vehicleSpinner.getSelectedItemPosition()))));
     }
 
+    private void refreshGroupFilters() {
+        if (group1Spinner == null || group2Spinner == null || models.isEmpty() || vehicleSpinner == null) return;
+        updatingGroupFilters = true;
+        VehicleModel model = models.get(Math.max(0, vehicleSpinner.getSelectedItemPosition()));
+        group1Values.clear();
+        group1Values.add("");
+        group1Values.addAll(database.group1Options(language, model.assemblyCode));
+        ArrayAdapter<String> group1Adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, optionLabels(group1Values, text("allGroup1")));
+        group1Adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        group1Spinner.setAdapter(group1Adapter);
+        updatingGroupFilters = false;
+        refreshGroup2Filter();
+    }
+
+    private void refreshGroup2Filter() {
+        if (group2Spinner == null || models.isEmpty() || vehicleSpinner == null) return;
+        VehicleModel model = models.get(Math.max(0, vehicleSpinner.getSelectedItemPosition()));
+        String group1 = selectedGroup1();
+        group2Values.clear();
+        group2Values.add("");
+        group2Values.addAll(database.group2Options(language, model.assemblyCode, group1));
+        ArrayAdapter<String> group2Adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, optionLabels(group2Values, text("allGroup2")));
+        group2Adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        group2Spinner.setAdapter(group2Adapter);
+    }
+
+    private String selectedGroup1() {
+        if (group1Spinner == null || group1Values.isEmpty()) return "";
+        int position = Math.max(0, group1Spinner.getSelectedItemPosition());
+        return position < group1Values.size() ? group1Values.get(position) : "";
+    }
+
+    private String selectedGroup2() {
+        if (group2Spinner == null || group2Values.isEmpty()) return "";
+        int position = Math.max(0, group2Spinner.getSelectedItemPosition());
+        return position < group2Values.size() ? group2Values.get(position) : "";
+    }
+
+    private List<String> optionLabels(List<String> values, String allText) {
+        List<String> labels = new ArrayList<>();
+        for (String value : values) {
+            labels.add(value.isEmpty() ? allText : value);
+        }
+        return labels;
+    }
+
     private void searchParts() {
         resultList.removeAllViews();
         if (models.isEmpty()) {
@@ -306,11 +389,13 @@ public class MainActivity extends ComponentActivity {
         }
         VehicleModel model = models.get(Math.max(0, vehicleSpinner.getSelectedItemPosition()));
         String keyword = keywordInput.getText().toString().trim();
-        if (keyword.isEmpty()) {
+        String group1 = selectedGroup1();
+        String group2 = selectedGroup2();
+        if (keyword.isEmpty() && group1.isEmpty() && group2.isEmpty()) {
             Toast.makeText(this, text("enterKeyword"), Toast.LENGTH_SHORT).show();
             return;
         }
-        List<PartItem> parts = database.searchParts(language, model.assemblyCode, keyword, 200);
+        List<PartItem> parts = database.searchParts(language, model.assemblyCode, keyword, group1, group2, 200);
         resultList.addView(label(String.format(text("resultCount"), parts.size()), 15, true));
         for (PartItem item : parts) {
             resultList.addView(partCard(item, model));
@@ -741,6 +826,10 @@ public class MainActivity extends ComponentActivity {
                     case "partsTab": return "Parts";
                     case "scanTab": return "Scan";
                     case "vehicleLabel": return "Vehicle model";
+                    case "group1Label": return "Level-1 subgroup";
+                    case "group2Label": return "Level-2 subgroup";
+                    case "allGroup1": return "All level-1";
+                    case "allGroup2": return "All level-2";
                     case "keywordHint": return "Enter part name or drawing number";
                     case "search": return "Search";
                     case "resultTitle": return "Search results";
@@ -781,6 +870,10 @@ public class MainActivity extends ComponentActivity {
                     case "partsTab": return "Pieces";
                     case "scanTab": return "Scanner";
                     case "vehicleLabel": return "Modele";
+                    case "group1Label": return "Sous-groupe 1";
+                    case "group2Label": return "Sous-groupe 2";
+                    case "allGroup1": return "Tous niveau 1";
+                    case "allGroup2": return "Tous niveau 2";
                     case "keywordHint": return "Nom de piece ou numero de dessin";
                     case "search": return "Rechercher";
                     case "resultTitle": return "Resultats";
@@ -821,6 +914,10 @@ public class MainActivity extends ComponentActivity {
                     case "partsTab": return "\u914d\u4ef6\u67e5\u8be2";
                     case "scanTab": return "\u626b\u7801\u67e5\u8be2";
                     case "vehicleLabel": return "\u9009\u62e9\u8f66\u578b";
+                    case "group1Label": return "\u4e00\u7ea7\u5b50\u7ec4\u540d\u79f0";
+                    case "group2Label": return "\u4e8c\u7ea7\u5b50\u7ec4\u540d\u79f0";
+                    case "allGroup1": return "\u5168\u90e8\u4e00\u7ea7";
+                    case "allGroup2": return "\u5168\u90e8\u4e8c\u7ea7";
                     case "keywordHint": return "\u8f93\u5165\u914d\u4ef6\u540d\u79f0\u6216\u56fe\u53f7";
                     case "search": return "\u641c\u7d22";
                     case "resultTitle": return "\u641c\u7d22\u7ed3\u679c";

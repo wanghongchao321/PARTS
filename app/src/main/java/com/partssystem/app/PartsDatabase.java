@@ -72,13 +72,65 @@ final class PartsDatabase {
         return models;
     }
 
-    List<PartItem> searchParts(String language, String assemblyCode, String keyword, int limit) {
+    List<PartItem> searchParts(String language, String assemblyCode, String keyword, String group1, String group2, int limit) {
         String view = viewName(language);
         String like = "%" + safe(keyword) + "%";
+        List<String> args = new ArrayList<>();
+        args.add(assemblyCode);
+        StringBuilder where = new StringBuilder(" WHERE assembly_code=?");
+        if (!safe(keyword).isEmpty()) {
+            where.append(" AND (name LIKE ? OR part_no LIKE ? OR group1 LIKE ? OR group2 LIKE ? OR group3 LIKE ?)");
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
+        if (!safe(group1).isEmpty()) {
+            where.append(" AND group1=?");
+            args.add(group1);
+        }
+        if (!safe(group2).isEmpty()) {
+            where.append(" AND group2=?");
+            args.add(group2);
+        }
+        args.add(String.valueOf(limit));
         String sql = "SELECT assembly_code, assembly_year_code, vin, scan_lookup_code, part_no, name, quantity, note, group1, group2, group3 " +
-                "FROM " + view + " WHERE assembly_code=? AND (name LIKE ? OR part_no LIKE ? OR group1 LIKE ? OR group2 LIKE ? OR group3 LIKE ?) " +
-                "ORDER BY CASE WHEN " + standardPartCondition() + " THEN 1 ELSE 0 END, group1, group2, name LIMIT ?";
-        return queryParts(sql, new String[]{assemblyCode, like, like, like, like, like, String.valueOf(limit)});
+                "FROM " + view + where +
+                " ORDER BY CASE WHEN " + standardPartCondition() + " THEN 1 ELSE 0 END, group1, group2, name LIMIT ?";
+        return queryParts(sql, args.toArray(new String[0]));
+    }
+
+    List<String> group1Options(String language, String assemblyCode) {
+        return distinctValues(viewName(language), "group1", "assembly_code=? AND group1<>''", new String[]{assemblyCode});
+    }
+
+    List<String> group2Options(String language, String assemblyCode, String group1) {
+        List<String> args = new ArrayList<>();
+        args.add(assemblyCode);
+        String where = "assembly_code=? AND group2<>''";
+        if (!safe(group1).isEmpty()) {
+            where += " AND group1=?";
+            args.add(group1);
+        }
+        return distinctValues(viewName(language), "group2", where, args.toArray(new String[0]));
+    }
+
+    private List<String> distinctValues(String view, String column, String where, String[] args) {
+        List<String> values = new ArrayList<>();
+        Cursor c = db.rawQuery(
+                "SELECT DISTINCT " + column + " FROM " + view + " WHERE " + where + " ORDER BY " + column,
+                args
+        );
+        try {
+            while (c.moveToNext()) {
+                String value = safe(c.getString(0));
+                if (!value.isEmpty()) values.add(value);
+            }
+        } finally {
+            c.close();
+        }
+        return values;
     }
 
     List<VehicleInfo> findVehiclesByScannedPartNo(String language, String scannedCode, boolean fuzzy, boolean fromScanner) {
