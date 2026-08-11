@@ -83,11 +83,15 @@ final class PartsDatabase {
 
     List<VehicleInfo> findVehiclesByScannedPartNo(String language, String scannedCode, boolean fuzzy) {
         String raw = safe(scannedCode).trim();
-        String code = normalizeScan(raw);
-        if (code.isEmpty()) {
+        String trimmedBoxCode = normalizeScan(raw);
+        if (raw.isEmpty()) {
             return new ArrayList<>();
         }
-        return fuzzy ? fuzzyFindByPartNo(language, code, 50) : exactFindByPartNo(language, code, 100);
+        List<VehicleInfo> infos = fuzzy ? fuzzyFindByPartNo(language, raw, 50) : exactFindByPartNo(language, raw, 100);
+        if (!infos.isEmpty() || trimmedBoxCode.equals(raw)) {
+            return infos;
+        }
+        return fuzzy ? fuzzyFindByPartNo(language, trimmedBoxCode, 50) : exactFindByPartNo(language, trimmedBoxCode, 100);
     }
 
     private List<VehicleInfo> exactFindByPartNo(String language, String code, int limit) {
