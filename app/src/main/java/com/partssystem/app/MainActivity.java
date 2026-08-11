@@ -7,9 +7,13 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.AdapterView;
@@ -28,6 +32,14 @@ import java.util.List;
 public class MainActivity extends Activity {
     private static final int REQ_SCAN = 101;
     private static final int REQ_CAMERA = 102;
+    private static final int BG = 0xFFF8FAFC;
+    private static final int CARD = 0xFFFFFFFF;
+    private static final int LINE = 0xFFD9E0EA;
+    private static final int TEXT = 0xFF101827;
+    private static final int MUTED = 0xFF64748B;
+    private static final int BLUE = 0xFF1456C8;
+    private static final int SOFT = 0xFFEDF2F7;
+    private static final int GREEN = 0xFF0F9F6E;
 
     private PartsDatabase database;
     private final List<VehicleModel> models = new ArrayList<>();
@@ -42,6 +54,9 @@ public class MainActivity extends Activity {
     private EditText scanInput;
     private TextView pageTitle;
     private TextView vehicleDetailText;
+    private View scannerPanel;
+    private View scanFieldLabel;
+    private View scanSearchRow;
     private int currentPage = 0;
 
     @Override
@@ -61,15 +76,20 @@ public class MainActivity extends Activity {
 
     private void showMain() {
         root = vertical();
-        root.setPadding(dp(14), dp(12), dp(14), dp(8));
-        root.setBackgroundColor(0xFFF6F7FB);
+        root.setBackgroundColor(BG);
         setContentView(root);
 
+        LinearLayout top = horizontal();
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(18), dp(12), dp(18), dp(14));
+        top.setBackgroundColor(CARD);
+        LinearLayout titleBlock = vertical();
         pageTitle = label(text("appTitle"), 22, true);
-        root.addView(pageTitle);
-
-        LinearLayout controls = horizontal();
-        controls.setGravity(Gravity.CENTER_VERTICAL);
+        TextView subtitle = label("Parts Query", 13, false);
+        subtitle.setTextColor(MUTED);
+        titleBlock.addView(pageTitle);
+        titleBlock.addView(subtitle);
+        top.addView(titleBlock, new LinearLayout.LayoutParams(0, -2, 1));
         languageSpinner = new Spinner(this);
         ArrayAdapter<String> langAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
                 new String[]{"\u4e2d\u6587", "English", "Francais"});
@@ -82,8 +102,13 @@ public class MainActivity extends Activity {
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
-        controls.addView(languageSpinner, new LinearLayout.LayoutParams(0, dp(48), 1));
+        languageSpinner.setBackground(controlBg());
+        top.addView(languageSpinner, new LinearLayout.LayoutParams(dp(126), dp(42)));
+        root.addView(top);
 
+        LinearLayout controls = horizontal();
+        controls.setPadding(dp(14), dp(10), dp(14), dp(10));
+        controls.setBackgroundColor(CARD);
         partsTabButton = button(text("partsTab"));
         partsTabButton.setOnClickListener(v -> {
             currentPage = 0;
@@ -94,8 +119,11 @@ public class MainActivity extends Activity {
             currentPage = 1;
             renderPage();
         });
-        controls.addView(partsTabButton);
-        controls.addView(scanTabButton);
+        LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(0, dp(40), 1);
+        controls.addView(partsTabButton, tabLp);
+        LinearLayout.LayoutParams tabLp2 = new LinearLayout.LayoutParams(0, dp(40), 1);
+        tabLp2.setMargins(dp(8), 0, 0, 0);
+        controls.addView(scanTabButton, tabLp2);
         root.addView(controls);
 
         renderPage();
@@ -109,6 +137,8 @@ public class MainActivity extends Activity {
         pageTitle.setText(text("appTitle"));
         if (partsTabButton != null) partsTabButton.setText(text("partsTab"));
         if (scanTabButton != null) scanTabButton.setText(text("scanTab"));
+        styleTab(partsTabButton, currentPage == 0);
+        styleTab(scanTabButton, currentPage == 1);
         if (currentPage == 0) {
             renderPartsPage();
         } else {
@@ -117,59 +147,95 @@ public class MainActivity extends Activity {
     }
 
     private void renderPartsPage() {
-        root.addView(sectionTitle(text("partsTab")));
+        LinearLayout content = content();
+        content.addView(fieldLabel(text("vehicleLabel")));
         vehicleSpinner = new Spinner(this);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, modelLabels());
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         vehicleSpinner.setAdapter(adapter);
+        vehicleSpinner.setBackground(controlBg());
         vehicleSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updateSelectedVehicleDetail();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
-        root.addView(vehicleSpinner, new LinearLayout.LayoutParams(-1, dp(52)));
+        content.addView(vehicleSpinner, new LinearLayout.LayoutParams(-1, dp(46)));
 
         vehicleDetailText = label("", 14, false);
-        vehicleDetailText.setBackgroundColor(0xFFFFFFFF);
-        vehicleDetailText.setPadding(dp(12), dp(8), dp(12), dp(8));
-        root.addView(vehicleDetailText, new LinearLayout.LayoutParams(-1, -2));
+        vehicleDetailText.setBackground(cardBg());
+        vehicleDetailText.setPadding(dp(12), dp(10), dp(12), dp(10));
+        LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(-1, -2);
+        detailLp.setMargins(0, dp(9), 0, dp(12));
+        content.addView(vehicleDetailText, detailLp);
         updateSelectedVehicleDetail();
 
         LinearLayout searchRow = horizontal();
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
         keywordInput = input(text("keywordHint"));
-        searchRow.addView(keywordInput, new LinearLayout.LayoutParams(0, dp(52), 1));
+        searchRow.addView(keywordInput, new LinearLayout.LayoutParams(0, dp(46), 1));
         Button search = button(text("search"));
+        stylePrimaryButton(search);
         search.setOnClickListener(v -> searchParts());
-        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(dp(112), dp(52));
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(dp(112), dp(46));
         searchLp.setMargins(dp(8), 0, 0, 0);
         searchRow.addView(search, searchLp);
-        root.addView(searchRow);
+        content.addView(searchRow);
+
+        LinearLayout resultHead = horizontal();
+        resultHead.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = label(text("resultTitle"), 18, true);
+        resultHead.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView count = label("0", 13, false);
+        count.setTextColor(MUTED);
+        resultHead.addView(count);
+        content.addView(resultHead);
 
         resultList = vertical();
         ScrollView scroll = new ScrollView(this);
         scroll.addView(resultList);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void renderScanPage() {
-        root.addView(sectionTitle(text("scanTab")));
+        LinearLayout content = content();
+        scannerPanel = scannerPreview();
+        content.addView(scannerPanel);
+        scanFieldLabel = fieldLabel(text("scanHint"));
+        content.addView(scanFieldLabel);
         LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
         scanInput = input(text("scanHint"));
-        row.addView(scanInput, new LinearLayout.LayoutParams(0, dp(54), 1));
-        Button scan = button(text("scan"));
-        scan.setOnClickListener(v -> startScan());
-        row.addView(scan);
-        root.addView(row);
-
+        scanInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                setScanCompact(false);
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
         Button query = button(text("query"));
+        stylePrimaryButton(query);
         query.setOnClickListener(v -> queryScan(scanInput.getText().toString()));
-        root.addView(query);
+        row.addView(scanInput, new LinearLayout.LayoutParams(0, dp(46), 1));
+        LinearLayout.LayoutParams queryLp = new LinearLayout.LayoutParams(dp(112), dp(46));
+        queryLp.setMargins(dp(8), 0, 0, 0);
+        row.addView(query, queryLp);
+        scanSearchRow = row;
+        content.addView(scanSearchRow);
+
+        Button scan = button(text("scan"));
+        styleGhostButton(scan);
+        scan.setOnClickListener(v -> startScan());
+        LinearLayout.LayoutParams scanLp = new LinearLayout.LayoutParams(-1, dp(40));
+        scanLp.setMargins(0, dp(10), 0, dp(12));
+        content.addView(scan, scanLp);
 
         resultList = vertical();
         ScrollView scroll = new ScrollView(this);
         scroll.addView(resultList);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void updateSelectedVehicleDetail() {
@@ -212,19 +278,23 @@ public class MainActivity extends Activity {
         resultList.removeAllViews();
         String code = raw == null ? "" : raw.trim();
         if (code.isEmpty()) {
+            setScanCompact(false);
             Toast.makeText(this, text("enterScan"), Toast.LENGTH_SHORT).show();
             return;
         }
         List<VehicleInfo> infos = database.findVehiclesByScannedPartNo(language, code, fuzzy);
         if (infos.isEmpty()) {
+            setScanCompact(false);
             resultList.addView(label(fuzzy ? text("fuzzyNotFound") : text("exactNotFound"), 16, false));
             if (!fuzzy) {
                 Button fuzzyButton = button(text("fuzzySearch"));
+                styleGhostButton(fuzzyButton);
                 fuzzyButton.setOnClickListener(v -> queryScan(code, true));
                 resultList.addView(fuzzyButton);
             }
             return;
         }
+        setScanCompact(true);
         resultList.addView(label(fuzzy ? text("fuzzyResults") : text("exactResults"), 15, true));
         for (VehicleInfo info : infos) {
             resultList.addView(vehicleCard(info));
@@ -232,6 +302,16 @@ public class MainActivity extends Activity {
                 resultList.addView(partCard(item, info.model));
             }
         }
+    }
+
+    private void setScanCompact(boolean compact) {
+        if (scannerPanel != null) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(compact ? 96 : 270));
+            lp.setMargins(0, 0, 0, dp(compact ? 10 : 14));
+            scannerPanel.setLayoutParams(lp);
+        }
+        if (scanFieldLabel != null) scanFieldLabel.setVisibility(compact ? View.GONE : View.VISIBLE);
+        if (scanSearchRow != null) scanSearchRow.setVisibility(compact ? View.GONE : View.VISIBLE);
     }
 
     @Override
@@ -265,13 +345,14 @@ public class MainActivity extends Activity {
 
     private View partCard(PartItem item, VehicleModel model) {
         LinearLayout card = card();
-        card.addView(label(item.partNo + "  " + item.name, 16, true));
+        card.addView(label(item.partNo + "  " + item.name, 15, true));
         card.addView(infoRow(text("drawingNo"), item.partNo));
         card.addView(infoRow(text("qty"), item.quantity));
         card.addView(infoRow(text("note"), item.note));
         card.addView(infoRow(text("assembly"), model.assemblyCode));
         card.addView(label(item.group1 + " / " + item.group2 + (item.group3.isEmpty() ? "" : " / " + item.group3), 13, false));
         Button copy = button(text("copy"));
+        styleGhostButton(copy);
         copy.setOnClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             clipboard.setPrimaryClip(ClipData.newPlainText("part", copyText(item, model)));
@@ -285,7 +366,7 @@ public class MainActivity extends Activity {
         LinearLayout row = horizontal();
         row.setGravity(Gravity.TOP);
         TextView key = label(name, 13, false);
-        key.setTextColor(0xFF64748B);
+        key.setTextColor(MUTED);
         TextView val = label(value == null ? "" : value, 14, true);
         row.addView(key, new LinearLayout.LayoutParams(dp(92), -2));
         row.addView(val, new LinearLayout.LayoutParams(0, -2, 1));
@@ -327,12 +408,18 @@ public class MainActivity extends Activity {
         return layout;
     }
 
+    private LinearLayout content() {
+        LinearLayout layout = vertical();
+        layout.setPadding(dp(14), dp(14), dp(14), 0);
+        return layout;
+    }
+
     private LinearLayout card() {
         LinearLayout card = vertical();
         card.setPadding(dp(12), dp(10), dp(12), dp(10));
-        card.setBackgroundColor(0xFFFFFFFF);
+        card.setBackground(cardBg());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(8), 0, dp(8));
+        lp.setMargins(0, 0, 0, dp(10));
         card.setLayoutParams(lp);
         return card;
     }
@@ -341,7 +428,7 @@ public class MainActivity extends Activity {
         TextView tv = new TextView(this);
         tv.setText(value);
         tv.setTextSize(sp);
-        tv.setTextColor(0xFF111827);
+        tv.setTextColor(TEXT);
         tv.setPadding(0, dp(4), 0, dp(4));
         tv.setSingleLine(false);
         tv.setEllipsize(null);
@@ -357,12 +444,23 @@ public class MainActivity extends Activity {
         return tv;
     }
 
+    private TextView fieldLabel(String value) {
+        TextView tv = label(value, 13, true);
+        tv.setTextColor(MUTED);
+        tv.setPadding(0, dp(4), 0, dp(7));
+        return tv;
+    }
+
     private EditText input(String hint) {
         EditText edit = new EditText(this);
         edit.setHint(hint);
         edit.setSingleLine(true);
         edit.setEllipsize(TextUtils.TruncateAt.END);
-        edit.setTextSize(16);
+        edit.setTextSize(15);
+        edit.setTextColor(TEXT);
+        edit.setHintTextColor(MUTED);
+        edit.setPadding(dp(11), 0, dp(11), 0);
+        edit.setBackground(controlBg());
         return edit;
     }
 
@@ -378,6 +476,82 @@ public class MainActivity extends Activity {
         return btn;
     }
 
+    private View scannerPreview() {
+        LinearLayout scanner = vertical();
+        scanner.setGravity(Gravity.CENTER);
+        scanner.setPadding(dp(28), dp(32), dp(28), dp(32));
+        scanner.setBackground(roundBg(0xFFA9825C, 10, 0));
+        LinearLayout.LayoutParams scannerLp = new LinearLayout.LayoutParams(-1, dp(270));
+        scannerLp.setMargins(0, 0, 0, dp(14));
+        scanner.setLayoutParams(scannerLp);
+
+        LinearLayout frame = vertical();
+        frame.setGravity(Gravity.CENTER);
+        frame.setPadding(dp(18), dp(18), dp(18), dp(18));
+        frame.setBackground(roundStrokeBg(Color.TRANSPARENT, 8, 0xFF2D8CFF, 3));
+
+        LinearLayout box = vertical();
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(16), dp(14), dp(16), dp(14));
+        box.setBackground(roundBg(CARD, 5, 0));
+        TextView code = label("VBV3JBBXTY0", 20, true);
+        code.setGravity(Gravity.CENTER);
+        TextView qr = label("QR / BARCODE", 14, false);
+        qr.setGravity(Gravity.CENTER);
+        TextView made = label("PARTS MADE IN CHINA", 13, false);
+        made.setTextColor(MUTED);
+        made.setGravity(Gravity.CENTER);
+        box.addView(code);
+        box.addView(qr);
+        box.addView(made);
+        frame.addView(box, new LinearLayout.LayoutParams(-1, -2));
+        scanner.addView(frame, new LinearLayout.LayoutParams(-1, -1));
+        return scanner;
+    }
+
+    private void styleTab(Button button, boolean active) {
+        if (button == null) return;
+        button.setTextColor(active ? Color.WHITE : 0xFF334155);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setBackground(roundBg(active ? BLUE : SOFT, 6, 0));
+    }
+
+    private void stylePrimaryButton(Button button) {
+        button.setTextColor(Color.WHITE);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setBackground(roundBg(BLUE, 6, 0));
+    }
+
+    private void styleGhostButton(Button button) {
+        button.setTextColor(BLUE);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setBackground(roundStrokeBg(CARD, 6, BLUE, 1));
+    }
+
+    private GradientDrawable cardBg() {
+        return roundStrokeBg(CARD, 8, LINE, 1);
+    }
+
+    private GradientDrawable controlBg() {
+        return roundStrokeBg(CARD, 6, LINE, 1);
+    }
+
+    private GradientDrawable roundBg(int color, int radiusDp, int strokeColor) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        if (strokeColor != 0) drawable.setStroke(dp(1), strokeColor);
+        return drawable;
+    }
+
+    private GradientDrawable roundStrokeBg(int color, int radiusDp, int strokeColor, int strokeDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        drawable.setStroke(dp(strokeDp), strokeColor);
+        return drawable;
+    }
+
     private String text(String key) {
         switch (language) {
             case "en":
@@ -385,8 +559,10 @@ public class MainActivity extends Activity {
                     case "appTitle": return "Parts Query";
                     case "partsTab": return "Parts";
                     case "scanTab": return "Scan";
+                    case "vehicleLabel": return "Vehicle model";
                     case "keywordHint": return "Enter part name or drawing number";
                     case "search": return "Search";
+                    case "resultTitle": return "Search results";
                     case "scanHint": return "Scan or enter box code";
                     case "scan": return "Scan";
                     case "query": return "Query";
@@ -420,8 +596,10 @@ public class MainActivity extends Activity {
                     case "appTitle": return "Recherche de pieces";
                     case "partsTab": return "Pieces";
                     case "scanTab": return "Scanner";
+                    case "vehicleLabel": return "Modele";
                     case "keywordHint": return "Nom de piece ou numero de dessin";
                     case "search": return "Rechercher";
+                    case "resultTitle": return "Resultats";
                     case "scanHint": return "Scanner ou saisir le code";
                     case "scan": return "Scanner";
                     case "query": return "Rechercher";
@@ -455,8 +633,10 @@ public class MainActivity extends Activity {
                     case "appTitle": return "\u914d\u4ef6\u67e5\u8be2";
                     case "partsTab": return "\u914d\u4ef6\u67e5\u8be2";
                     case "scanTab": return "\u626b\u7801\u67e5\u8be2";
+                    case "vehicleLabel": return "\u9009\u62e9\u8f66\u578b";
                     case "keywordHint": return "\u8f93\u5165\u914d\u4ef6\u540d\u79f0\u6216\u56fe\u53f7";
                     case "search": return "\u641c\u7d22";
+                    case "resultTitle": return "\u641c\u7d22\u7ed3\u679c";
                     case "scanHint": return "\u626b\u63cf\u6216\u8f93\u5165\u7bb1\u7801";
                     case "scan": return "\u626b\u7801";
                     case "query": return "\u67e5\u8be2";
