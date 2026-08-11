@@ -15,6 +15,7 @@ import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -266,6 +267,12 @@ public class MainActivity extends ComponentActivity {
         LinearLayout searchRow = horizontal();
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
         keywordInput = input(text("keywordHint"));
+        keywordInput.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                scrollInputIntoViewNow(partsPageScroll, searchRow);
+            }
+            return false;
+        });
         keywordInput.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) scrollInputIntoView(partsPageScroll, searchRow);
         });
@@ -312,14 +319,24 @@ public class MainActivity extends ComponentActivity {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 lastScanFromCamera = false;
-                setScanCompact(true);
+                setScannerCompactHeight(true);
+                showScanInputControls(true);
                 scrollInputIntoView(scanPageScroll, scanSearchRow);
             }
             @Override public void afterTextChanged(Editable s) { }
         });
+        scanInput.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                setScannerCompactHeight(true);
+                showScanInputControls(true);
+                scrollInputIntoViewNow(scanPageScroll, scanSearchRow);
+            }
+            return false;
+        });
         scanInput.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) {
-                setScanCompact(true);
+                setScannerCompactHeight(true);
+                showScanInputControls(true);
                 scrollInputIntoView(scanPageScroll, scanSearchRow);
             }
         });
@@ -435,7 +452,13 @@ public class MainActivity extends ComponentActivity {
 
     private void scrollInputIntoView(ScrollView pageScroll, View target) {
         if (pageScroll == null || target == null) return;
-        pageScroll.postDelayed(() -> pageScroll.smoothScrollTo(0, Math.max(0, target.getTop() - dp(24))), 260);
+        scrollInputIntoViewNow(pageScroll, target);
+        pageScroll.postDelayed(() -> scrollInputIntoViewNow(pageScroll, target), 260);
+    }
+
+    private void scrollInputIntoViewNow(ScrollView pageScroll, View target) {
+        if (pageScroll == null || target == null) return;
+        pageScroll.smoothScrollTo(0, Math.max(0, target.getTop() - dp(24)));
     }
 
     private void setupKeyboardAwareInputScroll(ScrollView pageScroll, View target, EditText input, boolean compactScanOnKeyboard) {
@@ -451,7 +474,10 @@ public class MainActivity extends ComponentActivity {
                 pageScroll.setPadding(0, 0, 0, bottomPadding);
             }
             if (keyboardVisible && input != null && input.hasFocus()) {
-                if (compactScanOnKeyboard) setScanCompact(true);
+                if (compactScanOnKeyboard) {
+                    setScannerCompactHeight(true);
+                    showScanInputControls(true);
+                }
                 scrollInputIntoView(pageScroll, target);
             }
         });
@@ -496,13 +522,22 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void setScanCompact(boolean compact) {
+        setScannerCompactHeight(compact);
+        showScanInputControls(!compact);
+    }
+
+    private void setScannerCompactHeight(boolean compact) {
         if (scannerPanel != null) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(compact ? 96 : 270));
             lp.setMargins(0, 0, 0, dp(compact ? 10 : 14));
             scannerPanel.setLayoutParams(lp);
         }
-        if (scanFieldLabel != null) scanFieldLabel.setVisibility(compact ? View.GONE : View.VISIBLE);
-        if (scanSearchRow != null) scanSearchRow.setVisibility(compact ? View.GONE : View.VISIBLE);
+    }
+
+    private void showScanInputControls(boolean show) {
+        int visibility = show ? View.VISIBLE : View.GONE;
+        if (scanFieldLabel != null) scanFieldLabel.setVisibility(visibility);
+        if (scanSearchRow != null) scanSearchRow.setVisibility(visibility);
     }
 
     private void startInlineScan() {
