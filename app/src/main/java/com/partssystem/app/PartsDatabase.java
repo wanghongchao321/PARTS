@@ -87,9 +87,6 @@ final class PartsDatabase {
         if (raw.isEmpty()) {
             return new ArrayList<>();
         }
-        if (fromScanner) {
-            return fuzzy ? fuzzyFindByPartNo(language, trimmedBoxCode, 50) : exactFindByPartNo(language, trimmedBoxCode, 100);
-        }
         List<VehicleInfo> infos = fuzzy ? fuzzyFindByPartNo(language, raw, 50) : exactFindByPartNo(language, raw, 100);
         if (!infos.isEmpty() || trimmedBoxCode.equals(raw)) {
             return infos;

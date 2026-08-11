@@ -1,9 +1,13 @@
 package com.partssystem.app;
 
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.Size;
 import android.view.Gravity;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -42,6 +46,18 @@ public class ScanActivity extends ComponentActivity {
         FrameLayout root = new FrameLayout(this);
         PreviewView previewView = new PreviewView(this);
         root.addView(previewView, new FrameLayout.LayoutParams(-1, -1));
+
+        Button back = new Button(this);
+        back.setText("\u8fd4\u56de");
+        back.setAllCaps(false);
+        back.setTextSize(15);
+        back.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        back.setTextColor(Color.WHITE);
+        back.setBackground(roundBg(0x99111827, 18));
+        back.setOnClickListener(v -> finish());
+        FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(dp(88), dp(42), Gravity.TOP | Gravity.LEFT);
+        backLp.setMargins(dp(14), dp(18), 0, 0);
+        root.addView(back, backLp);
 
         TextView hint = new TextView(this);
         hint.setText("Align barcode or QR code in the frame");
@@ -110,5 +126,12 @@ public class ScanActivity extends ComponentActivity {
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private GradientDrawable roundBg(int color, int radiusDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        return drawable;
     }
 }

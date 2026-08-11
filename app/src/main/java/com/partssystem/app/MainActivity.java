@@ -291,7 +291,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, text("enterScan"), Toast.LENGTH_SHORT).show();
             return;
         }
-        List<VehicleInfo> infos = database.findVehiclesByScannedPartNo(language, code, fuzzy);
+        List<VehicleInfo> infos = database.findVehiclesByScannedPartNo(language, code, fuzzy, fromScanner);
         if (infos.isEmpty()) {
             setScanCompact(false);
             resultList.addView(label(fuzzy ? text("fuzzyNotFound") : text("exactNotFound"), 16, false));
