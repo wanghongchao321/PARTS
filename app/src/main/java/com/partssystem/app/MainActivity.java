@@ -80,6 +80,7 @@ public class MainActivity extends ComponentActivity {
     private EditText scanInput;
     private TextView pageTitle;
     private TextView vehicleDetailText;
+    private ScrollView scanPageScroll;
     private final List<String> group1Values = new ArrayList<>();
     private final List<String> group2Values = new ArrayList<>();
     private boolean updatingGroupFilters = false;
@@ -287,6 +288,9 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void renderScanPage() {
+        ScrollView pageScroll = new ScrollView(this);
+        pageScroll.setFillViewport(true);
+        scanPageScroll = pageScroll;
         LinearLayout content = content();
         scannerPanel = scannerPreview();
         content.addView(scannerPanel);
@@ -303,6 +307,10 @@ public class MainActivity extends ComponentActivity {
             }
             @Override public void afterTextChanged(Editable s) { }
         });
+        scanInput.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) scrollScanInputIntoView();
+        });
+        scanInput.setOnClickListener(v -> scrollScanInputIntoView());
         Button query = button(text("query"));
         stylePrimaryButton(query);
         query.setOnClickListener(v -> {
@@ -324,10 +332,9 @@ public class MainActivity extends ComponentActivity {
         content.addView(scan, scanLp);
 
         resultList = vertical();
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(resultList);
-        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
+        content.addView(resultList, new LinearLayout.LayoutParams(-1, -2));
+        pageScroll.addView(content);
+        root.addView(pageScroll, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void updateSelectedVehicleDetail() {
@@ -407,7 +414,13 @@ public class MainActivity extends ComponentActivity {
             requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA);
             return;
         }
+        setScanCompact(false);
         startInlineScan();
+    }
+
+    private void scrollScanInputIntoView() {
+        if (scanPageScroll == null || scanSearchRow == null) return;
+        scanPageScroll.postDelayed(() -> scanPageScroll.smoothScrollTo(0, Math.max(0, scanSearchRow.getTop() - dp(12))), 220);
     }
 
     private void queryScan(String raw) {
