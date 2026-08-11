@@ -81,11 +81,14 @@ final class PartsDatabase {
         return queryParts(sql, new String[]{assemblyCode, like, like, like, like, like, String.valueOf(limit)});
     }
 
-    List<VehicleInfo> findVehiclesByScannedPartNo(String language, String scannedCode, boolean fuzzy) {
+    List<VehicleInfo> findVehiclesByScannedPartNo(String language, String scannedCode, boolean fuzzy, boolean fromScanner) {
         String raw = safe(scannedCode).trim();
         String trimmedBoxCode = normalizeScan(raw);
         if (raw.isEmpty()) {
             return new ArrayList<>();
+        }
+        if (fromScanner) {
+            return fuzzy ? fuzzyFindByPartNo(language, trimmedBoxCode, 50) : exactFindByPartNo(language, trimmedBoxCode, 100);
         }
         List<VehicleInfo> infos = fuzzy ? fuzzyFindByPartNo(language, raw, 50) : exactFindByPartNo(language, raw, 100);
         if (!infos.isEmpty() || trimmedBoxCode.equals(raw)) {

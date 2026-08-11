@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private View scannerPanel;
     private View scanFieldLabel;
     private View scanSearchRow;
+    private boolean lastScanFromCamera = false;
     private int currentPage = 0;
 
     @Override
@@ -210,13 +211,17 @@ public class MainActivity extends Activity {
         scanInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                lastScanFromCamera = false;
                 setScanCompact(false);
             }
             @Override public void afterTextChanged(Editable s) { }
         });
         Button query = button(text("query"));
         stylePrimaryButton(query);
-        query.setOnClickListener(v -> queryScan(scanInput.getText().toString()));
+        query.setOnClickListener(v -> {
+            lastScanFromCamera = false;
+            queryScan(scanInput.getText().toString(), false, false);
+        });
         row.addView(scanInput, new LinearLayout.LayoutParams(0, dp(46), 1));
         LinearLayout.LayoutParams queryLp = new LinearLayout.LayoutParams(dp(112), dp(46));
         queryLp.setMargins(dp(8), 0, 0, 0);
@@ -271,10 +276,14 @@ public class MainActivity extends Activity {
     }
 
     private void queryScan(String raw) {
-        queryScan(raw, false);
+        queryScan(raw, false, false);
     }
 
     private void queryScan(String raw, boolean fuzzy) {
+        queryScan(raw, fuzzy, lastScanFromCamera);
+    }
+
+    private void queryScan(String raw, boolean fuzzy, boolean fromScanner) {
         resultList.removeAllViews();
         String code = raw == null ? "" : raw.trim();
         if (code.isEmpty()) {
@@ -289,7 +298,7 @@ public class MainActivity extends Activity {
             if (!fuzzy) {
                 Button fuzzyButton = button(text("fuzzySearch"));
                 styleGhostButton(fuzzyButton);
-                fuzzyButton.setOnClickListener(v -> queryScan(code, true));
+                fuzzyButton.setOnClickListener(v -> queryScan(code, true, fromScanner));
                 resultList.addView(fuzzyButton);
             }
             return;
@@ -320,7 +329,8 @@ public class MainActivity extends Activity {
         if (requestCode == REQ_SCAN && resultCode == RESULT_OK && data != null) {
             String code = data.getStringExtra("code");
             scanInput.setText(code);
-            queryScan(code);
+            lastScanFromCamera = true;
+            queryScan(code, false, true);
         }
     }
 
