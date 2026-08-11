@@ -205,20 +205,32 @@ public class MainActivity extends Activity {
     }
 
     private void queryScan(String raw) {
+        queryScan(raw, false);
+    }
+
+    private void queryScan(String raw, boolean fuzzy) {
         resultList.removeAllViews();
-        String code = raw.trim();
+        String code = raw == null ? "" : raw.trim();
         if (code.isEmpty()) {
             Toast.makeText(this, text("enterScan"), Toast.LENGTH_SHORT).show();
             return;
         }
-        VehicleInfo info = database.findVehicleByScanCode(language, code);
-        if (info == null) {
-            resultList.addView(label(text("notFound"), 16, false));
+        List<VehicleInfo> infos = database.findVehiclesByScannedPartNo(language, code, fuzzy);
+        if (infos.isEmpty()) {
+            resultList.addView(label(fuzzy ? text("fuzzyNotFound") : text("exactNotFound"), 16, false));
+            if (!fuzzy) {
+                Button fuzzyButton = button(text("fuzzySearch"));
+                fuzzyButton.setOnClickListener(v -> queryScan(code, true));
+                resultList.addView(fuzzyButton);
+            }
             return;
         }
-        resultList.addView(vehicleCard(info));
-        for (PartItem item : info.parts) {
-            resultList.addView(partCard(item, info.model));
+        resultList.addView(label(fuzzy ? text("fuzzyResults") : text("exactResults"), 15, true));
+        for (VehicleInfo info : infos) {
+            resultList.addView(vehicleCard(info));
+            for (PartItem item : info.parts) {
+                resultList.addView(partCard(item, info.model));
+            }
         }
     }
 
@@ -246,7 +258,7 @@ public class MainActivity extends Activity {
         card.addView(infoRow(text("model"), info.model.modelName(language)));
         card.addView(infoRow(text("shortName"), info.model.shortName(language)));
         card.addView(infoRow(text("assembly"), info.model.assemblyCode));
-        card.addView(infoRow(text("scanKey"), info.scanLookupCode));
+        card.addView(infoRow(text("partCode"), info.scanLookupCode));
         card.addView(label(String.format(text("resultCount"), info.parts.size()), 14, true));
         return card;
     }
@@ -386,12 +398,18 @@ public class MainActivity extends Activity {
                     case "enterKeyword": return "Please enter a keyword";
                     case "enterScan": return "Please scan or enter a code";
                     case "notFound": return "No vehicle found";
+                    case "exactNotFound": return "No exact drawing number match";
+                    case "fuzzySearch": return "Fuzzy search";
+                    case "fuzzyNotFound": return "No similar drawing number found";
+                    case "exactResults": return "Exact drawing number match";
+                    case "fuzzyResults": return "Similar drawing number results";
                     case "noData": return "No data";
                     case "vehicleInfo": return "Vehicle information";
                     case "model": return "Model";
                     case "shortName": return "Short name";
                     case "assembly": return "Assembly";
                     case "scanKey": return "Scan key";
+                    case "partCode": return "Part code";
                     case "drawingNo": return "Drawing No";
                     case "partName": return "Part name";
                     case "group": return "Group";
@@ -415,12 +433,18 @@ public class MainActivity extends Activity {
                     case "enterKeyword": return "Veuillez saisir un mot-cle";
                     case "enterScan": return "Veuillez scanner ou saisir un code";
                     case "notFound": return "Vehicule introuvable";
+                    case "exactNotFound": return "Aucune correspondance exacte du numero de dessin";
+                    case "fuzzySearch": return "Recherche approximative";
+                    case "fuzzyNotFound": return "Aucun numero de dessin similaire";
+                    case "exactResults": return "Correspondance exacte du numero de dessin";
+                    case "fuzzyResults": return "Numeros de dessin similaires";
                     case "noData": return "Aucune donnee";
                     case "vehicleInfo": return "Informations vehicule";
                     case "model": return "Modele";
                     case "shortName": return "Nom court";
                     case "assembly": return "Assemblage";
                     case "scanKey": return "Cle de scan";
+                    case "partCode": return "Code piece";
                     case "drawingNo": return "Numero de dessin";
                     case "partName": return "Nom de piece";
                     case "group": return "Groupe";
@@ -444,12 +468,18 @@ public class MainActivity extends Activity {
                     case "enterKeyword": return "\u8bf7\u8f93\u5165\u5173\u952e\u8bcd";
                     case "enterScan": return "\u8bf7\u626b\u63cf\u6216\u8f93\u5165\u7f16\u7801";
                     case "notFound": return "\u672a\u627e\u5230\u8f66\u578b";
+                    case "exactNotFound": return "\u672a\u627e\u5230\u7cbe\u786e\u56fe\u53f7\u5339\u914d";
+                    case "fuzzySearch": return "\u6a21\u7cca\u67e5\u627e";
+                    case "fuzzyNotFound": return "\u672a\u627e\u5230\u76f8\u4f3c\u56fe\u53f7";
+                    case "exactResults": return "\u7cbe\u786e\u56fe\u53f7\u5339\u914d";
+                    case "fuzzyResults": return "\u76f8\u4f3c\u56fe\u53f7\u7ed3\u679c";
                     case "noData": return "\u65e0\u6570\u636e";
                     case "vehicleInfo": return "\u8f66\u578b\u4fe1\u606f";
                     case "model": return "\u8f66\u578b";
                     case "shortName": return "\u7b80\u79f0";
                     case "assembly": return "\u6574\u7f16";
                     case "scanKey": return "\u626b\u7801\u67e5\u627e\u7801";
+                    case "partCode": return "\u622a\u53d6\u540e\u56fe\u53f7";
                     case "drawingNo": return "\u56fe\u53f7";
                     case "partName": return "\u914d\u4ef6\u540d\u79f0";
                     case "group": return "\u5206\u7ec4";

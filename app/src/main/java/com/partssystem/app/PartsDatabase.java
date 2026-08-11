@@ -8,7 +8,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 final class PartsDatabase {
     private static final String ASSET_DB = "parts_android.db";
@@ -78,34 +81,93 @@ final class PartsDatabase {
         return queryParts(sql, new String[]{assemblyCode, like, like, like, like, like, String.valueOf(limit)});
     }
 
-    VehicleInfo findVehicleByScanCode(String language, String scannedCode) {
+    List<VehicleInfo> findVehiclesByScannedPartNo(String language, String scannedCode, boolean fuzzy) {
         String raw = safe(scannedCode).trim();
         String code = normalizeScan(raw);
-        String rawLike = "%" + raw + "%";
-        String codeLike = "%" + code + "%";
+        if (code.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return fuzzy ? fuzzyFindByPartNo(language, code, 50) : exactFindByPartNo(language, code, 100);
+    }
+
+    private List<VehicleInfo> exactFindByPartNo(String language, String code, int limit) {
         Cursor c = db.rawQuery(
-                "SELECT a.assembly_code, a.assembly_year_code, a.vin, a.scan_lookup_code, " +
-                        "vm.short_name_zh, vm.model_name_zh, vm.short_name_en, vm.model_name_en, vm.short_name_fr, vm.model_name_fr " +
-                        "FROM assemblies a LEFT JOIN vehicle_models vm ON vm.id=a.vehicle_model_id " +
-                        "WHERE a.scan_lookup_code LIKE ? OR a.scan_lookup_code LIKE ? OR a.assembly_code LIKE ? OR a.assembly_code LIKE ? LIMIT 1",
-                new String[]{rawLike, codeLike, rawLike, codeLike}
+                joinedPartSql(viewName(language)) + " WHERE UPPER(p.part_no)=? ORDER BY p.assembly_code, p.part_no LIMIT ?",
+                new String[]{normalizePartCodeForSql(code), String.valueOf(limit)}
         );
         try {
-            if (!c.moveToFirst()) {
-                return null;
-            }
-            VehicleModel model = new VehicleModel(
-                    c.getString(0),
-                    c.getString(4), c.getString(5),
-                    c.getString(6), c.getString(7),
-                    c.getString(8), c.getString(9)
-            );
-            VehicleInfo info = new VehicleInfo(c.getString(0), c.getString(1), c.getString(2), c.getString(3), model);
-            info.parts.addAll(partsByAssembly(language, info.assemblyCode, 300));
-            return info;
+            List<VehicleInfo> infos = groupVehicleInfos(c, code);
+            return infos.isEmpty() ? normalizedExactFindByPartNo(language, code, limit) : infos;
         } finally {
             c.close();
         }
+    }
+
+    private List<VehicleInfo> normalizedExactFindByPartNo(String language, String code, int limit) {
+        String needle = normalizePartCode(code);
+        List<VehicleInfo> infos = new ArrayList<>();
+        Map<String, VehicleInfo> byAssembly = new HashMap<>();
+        Cursor c = db.rawQuery(joinedPartSql(viewName(language)) + " ORDER BY p.part_no", null);
+        try {
+            while (c.moveToNext()) {
+                PartItem part = partFromCursor(c);
+                if (!normalizePartCode(part.partNo).equals(needle)) continue;
+                VehicleInfo info = byAssembly.get(part.assemblyCode);
+                if (info == null) {
+                    if (infos.size() >= limit) break;
+                    info = new VehicleInfo(part.assemblyCode, part.assemblyYearCode, part.vin, code, vehicleFromCursor(c));
+                    byAssembly.put(part.assemblyCode, info);
+                    infos.add(info);
+                }
+                info.parts.add(part);
+            }
+        } finally {
+            c.close();
+        }
+        return infos;
+    }
+
+    private List<VehicleInfo> fuzzyFindByPartNo(String language, String code, int limit) {
+        String needle = normalizePartCode(code);
+        if (needle.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<ScoredPart> scored = new ArrayList<>();
+        Cursor c = db.rawQuery(joinedPartSql(viewName(language)) + " ORDER BY p.part_no", null);
+        try {
+            while (c.moveToNext()) {
+                PartItem part = partFromCursor(c);
+                String haystack = normalizePartCode(part.partNo);
+                if (haystack.isEmpty()) continue;
+                int distance = fuzzyDistance(needle, haystack);
+                int threshold = Math.max(2, Math.min(6, needle.length() / 4));
+                if (distance <= threshold || haystack.contains(needle) || needle.contains(haystack)) {
+                    scored.add(new ScoredPart(part, vehicleFromCursor(c), distance, Math.abs(haystack.length() - needle.length())));
+                }
+            }
+        } finally {
+            c.close();
+        }
+        scored.sort((a, b) -> {
+            if (a.distance != b.distance) return a.distance - b.distance;
+            if (a.lengthDelta != b.lengthDelta) return a.lengthDelta - b.lengthDelta;
+            return a.part.partNo.compareTo(b.part.partNo);
+        });
+
+        List<VehicleInfo> infos = new ArrayList<>();
+        Map<String, VehicleInfo> byAssembly = new HashMap<>();
+        for (ScoredPart candidate : scored) {
+            if (infos.size() >= limit) break;
+            String assembly = candidate.part.assemblyCode;
+            VehicleInfo info = byAssembly.get(assembly);
+            if (info == null) {
+                info = new VehicleInfo(assembly, candidate.part.assemblyYearCode, candidate.part.vin, code, candidate.model);
+                byAssembly.put(assembly, info);
+                infos.add(info);
+            }
+            info.parts.add(candidate.part);
+        }
+        return infos;
     }
 
     List<PartItem> partsByAssembly(String language, String assemblyCode, int limit) {
@@ -116,10 +178,112 @@ final class PartsDatabase {
 
     static String normalizeScan(String raw) {
         String code = safe(raw).trim();
-        if (code.length() > 7) {
+        if (code.length() > 6) {
             return code.substring(1, code.length() - 5);
         }
         return code;
+    }
+
+    private String joinedPartSql(String view) {
+        return "SELECT p.assembly_code, p.assembly_year_code, p.vin, p.scan_lookup_code, " +
+                "p.part_no, p.name, p.quantity, p.note, p.group1, p.group2, p.group3, " +
+                "vm.short_name_zh, vm.model_name_zh, vm.short_name_en, vm.model_name_en, vm.short_name_fr, vm.model_name_fr " +
+                "FROM " + view + " p LEFT JOIN vehicle_models vm ON vm.assembly_code=p.assembly_code";
+    }
+
+    private List<VehicleInfo> groupVehicleInfos(Cursor c, String code) {
+        List<VehicleInfo> infos = new ArrayList<>();
+        Map<String, VehicleInfo> byAssembly = new HashMap<>();
+        while (c.moveToNext()) {
+            PartItem part = partFromCursor(c);
+            VehicleInfo info = byAssembly.get(part.assemblyCode);
+            if (info == null) {
+                info = new VehicleInfo(part.assemblyCode, part.assemblyYearCode, part.vin, code, vehicleFromCursor(c));
+                byAssembly.put(part.assemblyCode, info);
+                infos.add(info);
+            }
+            info.parts.add(part);
+        }
+        return infos;
+    }
+
+    private PartItem partFromCursor(Cursor c) {
+        return new PartItem(
+                c.getString(0), c.getString(1), c.getString(2), c.getString(3),
+                c.getString(4), c.getString(5), c.getString(6), c.getString(7),
+                c.getString(8), c.getString(9), c.getString(10)
+        );
+    }
+
+    private VehicleModel vehicleFromCursor(Cursor c) {
+        return new VehicleModel(
+                c.getString(0),
+                c.getString(11), c.getString(12),
+                c.getString(13), c.getString(14),
+                c.getString(15), c.getString(16)
+        );
+    }
+
+    private static String normalizePartCodeForSql(String value) {
+        return safe(value).trim().toUpperCase(Locale.US);
+    }
+
+    private static String normalizePartCode(String value) {
+        return safe(value).trim().toUpperCase(Locale.US).replaceAll("[^A-Z0-9]", "");
+    }
+
+    private static int fuzzyDistance(String query, String target) {
+        if (target.contains(query) || query.contains(target)) return 0;
+        if (query.length() <= 63) return myersDistance(query, target);
+        return levenshteinDistance(query, target);
+    }
+
+    private static int myersDistance(String pattern, String text) {
+        int m = pattern.length();
+        if (m == 0) return text.length();
+        long[] masks = new long[128];
+        for (int i = 0; i < m; i++) {
+            char ch = pattern.charAt(i);
+            if (ch < masks.length) {
+                masks[ch] |= 1L << i;
+            }
+        }
+        long vp = ~0L;
+        long vn = 0L;
+        int score = m;
+        long topBit = 1L << (m - 1);
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            long pm = ch < masks.length ? masks[ch] : 0L;
+            long x = pm | vn;
+            long d0 = (((x & vp) + vp) ^ vp) | x;
+            long hp = vn | ~(d0 | vp);
+            long hn = vp & d0;
+            if ((hp & topBit) != 0) score++;
+            if ((hn & topBit) != 0) score--;
+            hp = (hp << 1) | 1L;
+            hn <<= 1;
+            vp = hn | ~(d0 | hp);
+            vn = hp & d0;
+        }
+        return score;
+    }
+
+    private static int levenshteinDistance(String a, String b) {
+        int[] prev = new int[b.length() + 1];
+        int[] curr = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            curr[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                curr[j] = Math.min(Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+            }
+            int[] tmp = prev;
+            prev = curr;
+            curr = tmp;
+        }
+        return prev[b.length()];
     }
 
     private List<PartItem> queryParts(String sql, String[] args) {
@@ -147,5 +311,19 @@ final class PartsDatabase {
 
     private static String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private static final class ScoredPart {
+        final PartItem part;
+        final VehicleModel model;
+        final int distance;
+        final int lengthDelta;
+
+        ScoredPart(PartItem part, VehicleModel model, int distance, int lengthDelta) {
+            this.part = part;
+            this.model = model;
+            this.distance = distance;
+            this.lengthDelta = lengthDelta;
+        }
     }
 }
