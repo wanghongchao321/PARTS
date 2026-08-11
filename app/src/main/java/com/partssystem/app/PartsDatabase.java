@@ -77,7 +77,7 @@ final class PartsDatabase {
         String like = "%" + safe(keyword) + "%";
         String sql = "SELECT assembly_code, assembly_year_code, vin, scan_lookup_code, part_no, name, quantity, note, group1, group2, group3 " +
                 "FROM " + view + " WHERE assembly_code=? AND (name LIKE ? OR part_no LIKE ? OR group1 LIKE ? OR group2 LIKE ? OR group3 LIKE ?) " +
-                "ORDER BY group1, group2, name LIMIT ?";
+                "ORDER BY CASE WHEN " + standardPartCondition() + " THEN 1 ELSE 0 END, group1, group2, name LIMIT ?";
         return queryParts(sql, new String[]{assemblyCode, like, like, like, like, like, String.valueOf(limit)});
     }
 
@@ -311,6 +311,12 @@ final class PartsDatabase {
         if ("en".equals(language)) return "v_parts_en";
         if ("fr".equals(language)) return "v_parts_fr";
         return "v_parts_zh";
+    }
+
+    private static String standardPartCondition() {
+        return "name LIKE '%螺栓%' OR name LIKE '%螺母%' OR name LIKE '%垫片%' " +
+                "OR lower(name) LIKE '%bolt%' OR lower(name) LIKE '%nut%' OR lower(name) LIKE '%washer%' " +
+                "OR lower(name) LIKE '%boulon%' OR lower(name) LIKE '%ecrou%' OR lower(name) LIKE '%écrou%' OR lower(name) LIKE '%rondelle%'";
     }
 
     private static String safe(String value) {
