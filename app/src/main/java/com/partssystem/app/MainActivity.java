@@ -80,6 +80,7 @@ public class MainActivity extends ComponentActivity {
     private EditText scanInput;
     private TextView pageTitle;
     private TextView vehicleDetailText;
+    private ScrollView partsPageScroll;
     private ScrollView scanPageScroll;
     private final List<String> group1Values = new ArrayList<>();
     private final List<String> group2Values = new ArrayList<>();
@@ -205,6 +206,8 @@ public class MainActivity extends ComponentActivity {
 
     private void renderPartsPage() {
         ScrollView pageScroll = new ScrollView(this);
+        pageScroll.setFillViewport(true);
+        partsPageScroll = pageScroll;
         LinearLayout content = content();
 
         LinearLayout filterCard = card();
@@ -263,6 +266,10 @@ public class MainActivity extends ComponentActivity {
         LinearLayout searchRow = horizontal();
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
         keywordInput = input(text("keywordHint"));
+        keywordInput.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) scrollInputIntoView(partsPageScroll, searchRow);
+        });
+        keywordInput.setOnClickListener(v -> scrollInputIntoView(partsPageScroll, searchRow));
         searchRow.addView(keywordInput, new LinearLayout.LayoutParams(0, dp(46), 1));
         Button search = button(text("search"));
         stylePrimaryButton(search);
@@ -283,8 +290,10 @@ public class MainActivity extends ComponentActivity {
 
         resultList = vertical();
         content.addView(resultList, new LinearLayout.LayoutParams(-1, -2));
+        pageScroll.setClipToPadding(false);
         pageScroll.addView(content);
         root.addView(pageScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        setupKeyboardAwareInputScroll(pageScroll, searchRow, keywordInput, false);
     }
 
     private void renderScanPage() {
@@ -303,14 +312,18 @@ public class MainActivity extends ComponentActivity {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 lastScanFromCamera = false;
-                setScanCompact(false);
+                setScanCompact(true);
+                scrollInputIntoView(scanPageScroll, scanSearchRow);
             }
             @Override public void afterTextChanged(Editable s) { }
         });
         scanInput.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) scrollScanInputIntoView();
+            if (hasFocus) {
+                setScanCompact(true);
+                scrollInputIntoView(scanPageScroll, scanSearchRow);
+            }
         });
-        scanInput.setOnClickListener(v -> scrollScanInputIntoView());
+        scanInput.setOnClickListener(v -> scrollInputIntoView(scanPageScroll, scanSearchRow));
         Button query = button(text("query"));
         stylePrimaryButton(query);
         query.setOnClickListener(v -> {
@@ -333,8 +346,10 @@ public class MainActivity extends ComponentActivity {
 
         resultList = vertical();
         content.addView(resultList, new LinearLayout.LayoutParams(-1, -2));
+        pageScroll.setClipToPadding(false);
         pageScroll.addView(content);
         root.addView(pageScroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        setupKeyboardAwareInputScroll(pageScroll, scanSearchRow, scanInput, true);
     }
 
     private void updateSelectedVehicleDetail() {
@@ -418,9 +433,28 @@ public class MainActivity extends ComponentActivity {
         startInlineScan();
     }
 
-    private void scrollScanInputIntoView() {
-        if (scanPageScroll == null || scanSearchRow == null) return;
-        scanPageScroll.postDelayed(() -> scanPageScroll.smoothScrollTo(0, Math.max(0, scanSearchRow.getTop() - dp(12))), 220);
+    private void scrollInputIntoView(ScrollView pageScroll, View target) {
+        if (pageScroll == null || target == null) return;
+        pageScroll.postDelayed(() -> pageScroll.smoothScrollTo(0, Math.max(0, target.getTop() - dp(24))), 260);
+    }
+
+    private void setupKeyboardAwareInputScroll(ScrollView pageScroll, View target, EditText input, boolean compactScanOnKeyboard) {
+        pageScroll.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            if ((currentPage == 0 && partsPageScroll != pageScroll) || (currentPage == 1 && scanPageScroll != pageScroll)) return;
+            Rect visible = new Rect();
+            pageScroll.getWindowVisibleDisplayFrame(visible);
+            int screenHeight = pageScroll.getRootView().getHeight();
+            int keyboardHeight = Math.max(0, screenHeight - visible.bottom);
+            boolean keyboardVisible = keyboardHeight > dp(120);
+            int bottomPadding = keyboardVisible ? keyboardHeight + dp(18) : 0;
+            if (pageScroll.getPaddingBottom() != bottomPadding) {
+                pageScroll.setPadding(0, 0, 0, bottomPadding);
+            }
+            if (keyboardVisible && input != null && input.hasFocus()) {
+                if (compactScanOnKeyboard) setScanCompact(true);
+                scrollInputIntoView(pageScroll, target);
+            }
+        });
     }
 
     private void queryScan(String raw) {
